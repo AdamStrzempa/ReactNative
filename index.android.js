@@ -4,8 +4,10 @@ import {
   StyleSheet,
   Text,
   View,
-  TouchableOpacity,
-  Animated
+  PanResponder,
+  Animated,
+  TextInput,
+  ScrollView
 } from 'react-native';
 
 
@@ -17,81 +19,115 @@ const getTransformStyle = (animation) => {
   }
 }
 export default class AndroidButton extends Component {
-  constructor(props) {
-    super(props);
-    this.state = {
-      animate: new Animated.Value(0),
-      fabs: [
-        new Animated.Value(0),
-        new Animated.Value(0),
-        new Animated.Value(0),
-      ]
-    }
-    this.open = false
-  }
+  
+  componentWillMount() {
+    this.animated = new Animated.Value(0);
+    this.animatedMargin = new Animated.Value(0);
+    this.scrollOffset = 0;
+    this.contentHeight = 0;
+    this.scrollViewHeight = 0;
+    
+    this.panResponder = PanResponder.create({
+      onMoveShouldSetPanResponder: (evt, gestureState) => {
+        
+      },
+      onPanResponderGrant: (e, gestureState) => {
+        const { dy } = gestureState
+        const totalScrollHeight = this.scrollOffset + this.scrollViewHeight
 
-  handlePress = () => {
-    const toValue = this.open ? 0 : 1;
-    const flyouts = this.state.fabs.map((value, i) => {
-      return Animated.spring(value, {
-        toValue: (i + 1) * -90 * toValue,
-        friction: 5
-      })
+        if((this.scrollOffset < 0 && dy > 0) || ((totalScrollHeight > this.contentHeight) && dy < 0))
+        {
+          return true;
+        }
+      },
+      onPanResponderMove: (e, gestureState) => {
+        const { dy } = gestureState;
+        if (dy < 0) {
+          this.animated.setValue(dy);
+        }
+        else if (dy>0) {
+          this.animatedMargin.setValue(dy);
+        }
+    
+      },
+      onPanResponderRelease: (e, gestureState) => {
+        const {dy} = gestureState;
+
+        if(dy < -150) {
+          Animated.parallel([
+            Animated.timing(this.animated, {
+              toValue: -400,
+              duration: 150,
+            }),
+            Animated.timing(this.animatedMargin, {
+              toValue: 0,
+              duration: 150,
+            })
+          ]).start();
+        }
+        else if (dy > -150 && dy < 150) 
+        {
+          Animated.parallel([
+            Animated.timing(this.animated, {
+              toValue: 0,
+              duration: 150,
+            }),
+            Animated.timing(this.animatedMargin, {
+              toValue: 0,
+              duration: 150,
+            })
+          ]).start();
+        }
+        else if (dy > 150) {
+          Animated.timing(this.animated, {
+            toValue: 400,
+            duration: 300
+          }).start();
+        }
+      }
     })
-
-    Animated.parallel([
-      Animated.timing(this.state.animate, {
-        toValue,
-        duration: 300
-      }),
-      Animated.stagger(30, flyouts)
-    ]).start();
-    this.open = !this.open;
+        
   }
-
   render() {
-    const backgroundInterpolate = this.state.animate.interpolate({
-      inputRange: [0, 1],
-      outputRange: ['rgb(90,34,153)', 'rgb(36,11,63)']
-    })
-    const backgroundStyle = {
-      backgroundColor: backgroundInterpolate
+    const spacerStyle = {
+      marginTop: this.animatedMargin
     }
-    const buttonColorInterpolate = this.state.animate.interpolate({
-      inputRange: [0, 1],
-      outputRange: ['rgb(24,214,255)','rgb(255,255,255)']
+    const opacityInterpolate = this.animated.interpolate({
+      inputRange: [-400, 0, 400],
+      outputRange: [0, 1, 0]
     })
-    const buttonRotate = this.state.animate.interpolate({
-      inputRange: [0, 1],
-      outputRange: ['0deg','135deg']
-    })
-    const buttonStyle = {
-      backgroundColor: buttonColorInterpolate,
+    const modelStyle = {
       transform: [
-        { rotate: buttonRotate }
-      ]
-
+        {translateY: this.animated }
+      ],
+      opacity: opacityInterpolate
     }
     return (
-      <Animated.View style={[styles.container, backgroundStyle]}>
-        <View style={styles.position}>
-          {
-            this.state.fabs.map((animation, i) => {
-              return (
-                <TouchableOpacity
-                  key={i}
-                  style={[styles.button, styles.fab, styles.flyout, getTransformStyle(animation)]}
-                  onPress={this.handlePress} />
-              )
-            })
-          }
-          <TouchableOpacity onPress={this.handlePress}>
-            <Animated.View style={[styles.button, buttonStyle]}>
-              <Text style={styles.plus}>+</Text>
-            </Animated.View>
-          </TouchableOpacity>
-        </View>
-      </Animated.View>
+      <View style={styles.conteinter}>
+        <Animated.View style={spacerStyle} />
+        <Animated.View style={[styles.modal, modelStyle]} {...this.panResponder.panHandlers}>
+          <View style={styles.comments}>
+            <ScrollView
+              scrollEventThrottel={16}
+              onScroll={event => {
+                this.scrollOffset = event.nativeEvent.contentOffset.y;
+                this.scrollViewHeight = event.nativeEvent.layoutMeasurement.height
+              }}
+              onContentSizeChange={(contentWidth, contentHeight) => {
+                this.contentHeight = contentHeight;
+              }}
+            >
+              <Text style={styles.fakeText}>Top</Text>
+              <Text style={styles.fakeComments} />
+              <Text style={styles.fakeText}>Top</Text>
+            </ScrollView>
+          </View>
+          <View style={styles.inputWrap}>
+            <TextInput style={styles.textInput} placeholder="comment" />
+          </View>
+        </Animated.View>
+      </View>  
+    
     );
   }
 }
@@ -99,32 +135,32 @@ export default class AndroidButton extends Component {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
+    padding: 30
   },
-  position: {
-    position: "absolute",
-    right: 45,
-    bottom: 45,
+  modal: {
+    flex: 1,
+    borderRadius: 15,
+    overflow: "hidden",
+    borderWidth: 1,
+    borderColor: "#333"
   },
-  fab: {
-    position: "absolute",
-    bottom: 0,
-    right: 0,
+  comments: {
+    flex: 1
   },
-  button: {
-    width: 80,
-    height: 80,
-    borderRadius: 40,
-    alignItems: "center",
-    justifyContent: "center"
+  fakeComments: {
+    height: 1000,
+    backgroundColor: "#f1f1f1"
   },
-  flyout: {
-    backgroundColor: "#9439FF"
+  inputWrap: {
+    flexDirection: "row",
+    paddingHorizontal: 15
   },
-  plus: {
-    fontWeight: "bold",
-    fontSize: 30,
-    color: "#00768f"
-  }
+  textInput: {
+    flex: 1,
+    height: 50,
+    borderTopWidth: 1,
+    borderTopColor: "#000"
+}
 });
 
 AppRegistry.registerComponent('AndroidButton', () => AndroidButton);
